@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>AI Deck — PPT Generator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
+<style>
+  :root {
+    --bg: #0B0D17;
+    --panel: #14162A;
+    --panel-2: #1B1E38;
+    --accent: #6C5CE7;
+    --accent-2: #00CEC9;
+    --text: #F5F6FA;
+    --muted: #8B8FA8;
+    --border: #262A47;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Poppins', sans-serif;
+    background: radial-gradient(circle at 20% 0%, #191C33 0%, #0B0D17 55%);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 80px; }
+  .hero { text-align: center; margin-bottom: 42px; }
+  .hero h1 {
+    font-size: clamp(28px, 5vw, 44px);
+    font-weight: 800;
+    margin: 0 0 10px;
+    background: linear-gradient(90deg, #FFFFFF, #A29BFE);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero p { color: var(--muted); font-size: 16px; margin: 0; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px;
+    margin-bottom: 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 8px; letter-spacing: 0.02em; text-transform: uppercase; }
+  input[type=text], select, textarea {
+    width: 100%; padding: 14px 16px; border-radius: 12px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    font-size: 15px; font-family: inherit; outline: none; transition: border 0.15s;
+  }
+  input[type=text]:focus, textarea:focus { border-color: var(--accent); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+  .theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; margin-top: 10px; }
+  .theme-card {
+    border-radius: 14px; padding: 14px; cursor: pointer; border: 2px solid transparent;
+    background: var(--panel-2); transition: transform 0.15s, border 0.15s;
+  }
+  .theme-card:hover { transform: translateY(-2px); }
+  .theme-card.active { border-color: var(--accent); }
+  .swatch { height: 44px; border-radius: 8px; margin-bottom: 10px; }
+  .theme-name { font-size: 13px; font-weight: 600; text-align: center; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: linear-gradient(90deg, var(--accent), #A29BFE);
+    color: white; border: none; padding: 15px 28px; border-radius: 12px;
+    font-size: 15px; font-weight: 700; cursor: pointer; width: 100%;
+    transition: opacity 0.15s;
+  }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .btn.secondary { background: var(--panel-2); border: 1px solid var(--border); }
+  .preview-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 18px; margin-top: 18px;
+  }
+  .spinner {
+    width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,0.35);
+    border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error { background: rgba(255,90,90,0.1); border: 1px solid rgba(255,90,90,0.4); color: #FF9B9B; padding: 12px 16px; border-radius: 10px; font-size: 14px; margin-top: 14px; }
+  .footer-note { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 30px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+
+const API = window.location.protocol === "file:" ? "http://localhost:5000" : "";
+
+const THEMES = [
+  { key: "midnight", name: "Midnight", primary: "#6C5CE7", secondary: "#00CEC9", bg: "#0F1220", text: "#F5F6FA", muted: "#A0A3BD" },
+  { key: "sunrise", name: "Sunrise", primary: "#FF6B35", secondary: "#F7C548", bg: "#FFF8F0", text: "#2B2118", muted: "#8A7968" },
+  { key: "forest", name: "Forest", primary: "#1B6B3E", secondary: "#8FBF6E", bg: "#F4F9F4", text: "#18291D", muted: "#5F7A65" },
+  { key: "ocean", name: "Ocean", primary: "#0B6E99", secondary: "#37B6E8", bg: "#F0F7FF", text: "#0B1F2A", muted: "#5C7A8A" },
+  { key: "mono", name: "Monochrome", primary: "#1A1A1A", secondary: "#6E6E6E", bg: "#FFFFFF", text: "#111111", muted: "#8C8C8C" },
+];
+
+// Renders one slide exactly the way build_pptx() lays it out on the backend:
+// same title position, same accent rule, same bullet/flowchart/image regions.
+function SlidePreview({ slide, theme, index, isTitle, isClosing }) {
+  const t = theme;
+  const base = {
+    width: "100%", aspectRatio: "13.333 / 7.5", background: t.bg,
+    borderRadius: 12, position: "relative", overflow: "hidden",
+    border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 12px 30px rgba(0,0,0,0.35)",
+  };
+
+  if (isTitle) {
+    return (
+      <div style={base}>
+        <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "2%", background: t.primary }} />
+        <div style={{ position: "absolute", left: "8%", top: "38%", right: "8%" }}>
+          <div style={{ fontSize: "clamp(14px, 3.2vw, 30px)", fontWeight: 800, color: t.text, lineHeight: 1.2 }}>{slide.title}</div>
+          <div style={{ fontSize: "clamp(9px, 1.3vw, 13px)", color: t.muted, marginTop: 10 }}>{slide.subtitle}</div>
+        </div>
+      </div>
+    );
+  }
+  if (isClosing) {
+    return (
+      <div style={{ ...base, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: "clamp(16px, 3vw, 28px)", fontWeight: 800, color: t.text }}>Thank You</div>
+      </div>
+    );
+  }
+
+  const hasFlow = slide.needs_flowchart && slide.flowchart_steps && slide.flowchart_steps.length > 0;
+  const hasImg = slide.needs_image && !hasFlow;
+
+  return (
+    <div style={base}>
+      <div style={{ position: "absolute", left: "5.5%", top: "6.5%", right: "5.5%" }}>
+        <div style={{ fontSize: "clamp(10px, 2vw, 18px)", fontWeight: 800, color: t.primary }}>{slide.title}</div>
+        <div style={{ width: "18%", height: 3, background: t.secondary, marginTop: 6, borderRadius: 2 }} />
+      </div>
+
+      {hasFlow && (
+        <div style={{ position: "absolute", left: "5.5%", right: "5.5%", top: "27%", display: "flex", alignItems: "center", gap: 6 }}>
+          {slide.flowchart_steps.map((step, i) => (
+            <React.Fragment key={i}>
+              <div style={{
+                flex: 1, background: i % 2 === 0 ? t.primary : t.secondary,
+                color: i % 2 === 0 ? t.bg : t.text, borderRadius: 8, padding: "6px 4px",
+                fontSize: "clamp(6px, 1vw, 10px)", fontWeight: 700, textAlign: "center", minHeight: 30,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>{step}</div>
+              {i < slide.flowchart_steps.length - 1 && <div style={{ color: t.muted, fontSize: "clamp(8px,1.4vw,14px)" }}>→</div>}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+
+      {slide.bullets && slide.bullets.length > 0 && (
+        <div style={{
+          position: "absolute", left: "5.5%", top: hasFlow ? "48%" : "22%",
+          right: hasImg ? "38%" : "5.5%", bottom: "6%",
+        }}>
+          {slide.bullets.map((b, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, marginBottom: "6%", alignItems: "flex-start" }}>
+              <span style={{ color: t.secondary, fontSize: "clamp(7px,1.1vw,12px)" }}>●</span>
+              <span style={{ color: t.text, fontSize: "clamp(7px,1.15vw,13px)", lineHeight: 1.35 }}>{b}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hasImg && (
+        <div style={{
+          position: "absolute", right: "5.5%", top: "22%", bottom: "6%", width: "30%",
+          borderRadius: 10, overflow: "hidden", background: t.muted + "33",
+        }}>
+          {slide.image_url
+            ? <img src={slide.image_url} alt={slide.image_query || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: t.muted, fontSize: 10 }}>image</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [topic, setTopic] = useState("");
+  const [audience, setAudience] = useState("");
+  const [numSlides, setNumSlides] = useState(8);
+  const [theme, setTheme] = useState("midnight");
+  const [outline, setOutline] = useState(null);
+  const [loadingOutline, setLoadingOutline] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState("");
+  const activeTheme = THEMES.find(t => t.key === theme) || THEMES[0];
+
+  async function handleGenerateOutline() {
+    if (!topic.trim()) { setError("Pehle ek topic likho."); return; }
+    setError(""); setOutline(null); setLoadingOutline(true);
+    try {
+      const res = await fetch(`${API}/api/generate-outline`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic, num_slides: numSlides, audience, theme }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Outline generation failed");
+      setOutline(data);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoadingOutline(false);
+    }
+  }
+
+  async function handleDownload() {
+    if (!outline) return;
+    setDownloading(true); setError("");
+    try {
+      const res = await fetch(`${API}/api/generate-pptx`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outline, theme }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "PPTX generation failed");
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${outline.title || "presentation"}.pptx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <div className="wrap">
+      <div className="hero">
+        <h1>✨ AI Deck Generator</h1>
+        <p>Topic likho, theme choose karo — poori presentation ready.</p>
+      </div>
+
+      <div className="card">
+        <label>Topic</label>
+        <input type="text" placeholder="e.g. Introduction to Machine Learning"
+          value={topic} onChange={e => setTopic(e.target.value)} />
+
+        <div className="row">
+          <div>
+            <label>Audience (optional)</label>
+            <input type="text" placeholder="e.g. college students"
+              value={audience} onChange={e => setAudience(e.target.value)} />
+          </div>
+          <div>
+            <label>Number of slides: {numSlides}</label>
+            <input type="range" min="5" max="12" value={numSlides}
+              onChange={e => setNumSlides(Number(e.target.value))} style={{ marginTop: 14 }} />
+          </div>
+        </div>
+
+        <label style={{ marginTop: 22 }}>Theme</label>
+        <div className="theme-grid">
+          {THEMES.map(t => (
+            <div key={t.key} className={`theme-card ${theme === t.key ? "active" : ""}`}
+              onClick={() => setTheme(t.key)}>
+              <div className="swatch" style={{ background: `linear-gradient(135deg, ${t.primary}, ${t.secondary})` }} />
+              <div className="theme-name">{t.name}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 24 }}>
+          <button className="btn" onClick={handleGenerateOutline} disabled={loadingOutline}>
+            {loadingOutline ? <><span className="spinner"></span> Generating outline...</> : "Generate Outline"}
+          </button>
+        </div>
+
+        {error && <div className="error">{error}</div>}
+      </div>
+
+      {outline && (
+        <div className="card">
+          <h2 style={{ margin: "0 0 4px" }}>{outline.title}</h2>
+          <p style={{ color: "var(--muted)", marginTop: 0 }}>{outline.subtitle}</p>
+
+          <div className="preview-grid">
+            <SlidePreview slide={outline} theme={activeTheme} isTitle={true} />
+            {outline.slides && outline.slides.map((s, i) => (
+              <SlidePreview key={i} slide={s} theme={activeTheme} index={i} />
+            ))}
+            <SlidePreview slide={{}} theme={activeTheme} isClosing={true} />
+          </div>
+
+          <div style={{ marginTop: 22 }}>
+            <button className="btn" onClick={handleDownload} disabled={downloading}>
+              {downloading ? <><span className="spinner"></span> Building .pptx...</> : "⬇ Download PPTX"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="footer-note">
+        {window.location.protocol === "file:"
+          ? <>Local mode — backend must be running at http://localhost:5000</>
+          : <>Powered by Gemini · deployed on Vercel</>}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
